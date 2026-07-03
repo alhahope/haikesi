@@ -156,7 +156,9 @@ function normalizeItems(itemJson, ddragonVersion) {
     const record = {
       id: String(id),
       name: item.name,
-      iconUrl: `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/item/${item.image?.full ?? `${id}.png`}`
+      iconUrl: `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/item/${item.image?.full ?? `${id}.png`}`,
+      plaintext: cleanItemText(item.plaintext ?? ""),
+      description: cleanItemText(item.description ?? "")
     };
     byId[record.id] = record;
     if (!byName.has(record.name)) {
@@ -293,6 +295,8 @@ function normalizeItemReference(itemId, itemName, itemLookup, sourceIconUrl = ""
   return {
     id: resolvedId || name,
     name: byId?.name ?? byName?.name ?? name ?? (resolvedId ? `装备 ${resolvedId}` : ""),
+    plaintext: byId?.plaintext ?? byName?.plaintext ?? "",
+    description: byId?.description ?? byName?.description ?? "",
     iconUrl:
       byId?.iconUrl ??
       byName?.iconUrl ??
@@ -486,6 +490,15 @@ function decodeHtml(value) {
     .replace(/&#x27;/g, "'")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">");
+}
+
+function cleanItemText(value) {
+  return decodeHtml(String(value))
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<\/p>/gi, " ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 main().catch((error) => {

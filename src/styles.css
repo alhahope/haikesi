@@ -186,7 +186,9 @@ h1 {
 .champion-tile:hover,
 .champion-tile.is-selected,
 .augment-card:hover,
-.candidate-slot.filled:hover {
+.candidate-slot.filled:hover,
+.item-chip:hover,
+.item-chip:focus-visible {
   border-color: rgba(216, 177, 95, 0.74);
   background: rgba(216, 177, 95, 0.12);
 }
@@ -301,6 +303,8 @@ h1 {
   padding: 5px 7px 5px 5px;
   color: #f3eadb;
   background: rgba(255, 255, 255, 0.045);
+  cursor: pointer;
+  text-align: left;
 }
 
 .item-row.compact .item-chip {
@@ -325,6 +329,51 @@ h1 {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
+}
+
+.item-detail {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  margin-top: 12px;
+  border: 1px solid rgba(100, 214, 197, 0.28);
+  border-radius: 8px;
+  padding: 10px;
+  color: #e9dfcf;
+  background: rgba(7, 10, 14, 0.34);
+}
+
+.item-detail.empty {
+  display: grid;
+  grid-template-columns: 1fr;
+  min-height: 48px;
+  place-items: center;
+  color: var(--muted);
+  border-style: dashed;
+  font-size: 13px;
+}
+
+.item-detail img {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+}
+
+.item-detail h4 {
+  margin: 0 0 5px;
+  font-size: 14px;
+}
+
+.item-detail p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.item-detail .item-plain {
+  margin-bottom: 4px;
+  color: #f0d892;
 }
 
 .build-stats {

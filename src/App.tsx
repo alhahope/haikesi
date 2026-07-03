@@ -21,6 +21,8 @@ interface ItemRecord {
   id: string;
   name: string;
   iconUrl: string;
+  plaintext?: string;
+  description?: string;
 }
 
 interface CoreItemSet {
@@ -225,7 +227,7 @@ export default function App() {
             </div>
           ) : null}
 
-          <BuildPanel build={championBuild} />
+          <BuildPanel key={selectedChampionId} build={championBuild} />
 
           <div className="section-title">
             <Star size={18} aria-hidden="true" />
@@ -355,6 +357,7 @@ function AugmentCard({
 }
 
 function BuildPanel({ build }: { build?: ChampionBuildSummaryRecord }) {
+  const [selectedItem, setSelectedItem] = useState<ItemRecord | null>(null);
   const primaryBuild = build?.builds[0];
   const primaryCore = primaryBuild?.coreItems[0];
 
@@ -381,7 +384,7 @@ function BuildPanel({ build }: { build?: ChampionBuildSummaryRecord }) {
           <div className="core-build">
             <div>
               <p className="build-label">核心三件套</p>
-              <ItemRow items={primaryCore.items} />
+              <ItemRow items={primaryCore.items} onSelect={setSelectedItem} />
             </div>
             <div className="build-stats">
               {primaryCore.winRate > 0 ? <span>胜率 {formatPercent(primaryCore.winRate)}</span> : null}
@@ -398,15 +401,16 @@ function BuildPanel({ build }: { build?: ChampionBuildSummaryRecord }) {
               {primaryBuild.coreItems.slice(1).map((coreItem, index) => (
                 <div className="alt-build" key={`${coreItem.items.map((item) => item.id).join("-")}-${index}`}>
                   <span>#{index + 2}</span>
-                  <ItemRow items={coreItem.items} compact />
+                  <ItemRow items={coreItem.items} compact onSelect={setSelectedItem} />
                   <span>{coreItem.winRate > 0 ? formatPercent(coreItem.winRate) : "备选"}</span>
                 </div>
               ))}
             </div>
           ) : null}
 
-          <BuildItemGroup title="出门装" items={primaryBuild.startingItems} />
-          <BuildItemGroup title="鞋子推荐" items={primaryBuild.situationalItems} />
+          <BuildItemGroup title="出门装" items={primaryBuild.startingItems} onSelect={setSelectedItem} />
+          <BuildItemGroup title="鞋子推荐" items={primaryBuild.situationalItems} onSelect={setSelectedItem} />
+          <ItemDetail item={selectedItem} />
         </>
       ) : (
         <div className="build-empty">暂无出装数据</div>
@@ -415,26 +419,68 @@ function BuildPanel({ build }: { build?: ChampionBuildSummaryRecord }) {
   );
 }
 
-function BuildItemGroup({ title, items }: { title: string; items: ItemRecord[] }) {
+function BuildItemGroup({
+  title,
+  items,
+  onSelect
+}: {
+  title: string;
+  items: ItemRecord[];
+  onSelect: (item: ItemRecord) => void;
+}) {
   if (!items.length) return null;
 
   return (
     <div className="build-group">
       <p className="build-label">{title}</p>
-      <ItemRow items={items} compact />
+      <ItemRow items={items} compact onSelect={onSelect} />
     </div>
   );
 }
 
-function ItemRow({ items, compact = false }: { items: ItemRecord[]; compact?: boolean }) {
+function ItemRow({
+  items,
+  compact = false,
+  onSelect
+}: {
+  items: ItemRecord[];
+  compact?: boolean;
+  onSelect: (item: ItemRecord) => void;
+}) {
   return (
     <div className={compact ? "item-row compact" : "item-row"}>
       {items.map((item, index) => (
-        <span className="item-chip" key={`${item.id}-${index}`} title={item.name}>
+        <button
+          className="item-chip"
+          key={`${item.id}-${index}`}
+          onClick={() => onSelect(item)}
+          title={item.name}
+          type="button"
+        >
           <img src={item.iconUrl} alt={item.name} />
           <span>{item.name}</span>
-        </span>
+        </button>
       ))}
     </div>
+  );
+}
+
+function ItemDetail({ item }: { item: ItemRecord | null }) {
+  if (!item) {
+    return <div className="item-detail empty">点击装备查看介绍</div>;
+  }
+
+  const description = item.description || item.plaintext || "暂无装备说明";
+  const showPlaintext = item.plaintext && item.plaintext !== description;
+
+  return (
+    <article className="item-detail">
+      <img src={item.iconUrl} alt={item.name} />
+      <div>
+        <h4>{item.name}</h4>
+        {showPlaintext ? <p className="item-plain">{item.plaintext}</p> : null}
+        <p>{description}</p>
+      </div>
+    </article>
   );
 }
