@@ -1,4 +1,4 @@
-import { Search, Sparkles, Star, X } from "lucide-react";
+import { Search, ShoppingBag, Sparkles, Star, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import appData from "./data/generated/app-data.json";
 import {
@@ -17,6 +17,35 @@ interface ChampionRecord {
   iconUrl: string;
 }
 
+interface ItemRecord {
+  id: string;
+  name: string;
+  iconUrl: string;
+}
+
+interface CoreItemSet {
+  items: ItemRecord[];
+  games: number;
+  winRate: number;
+  pickRate: number;
+}
+
+interface ChampionBuildVariant {
+  patch: string;
+  tags: string[];
+  games: number;
+  winRate: number;
+  pickRate: number;
+  coreItems: CoreItemSet[];
+  startingItems: ItemRecord[];
+  situationalItems: ItemRecord[];
+}
+
+interface ChampionBuildSummaryRecord {
+  latestPatch: string;
+  builds: ChampionBuildVariant[];
+}
+
 const data = appData as {
   meta: {
     generatedAt: string;
@@ -27,6 +56,7 @@ const data = appData as {
   champions: ChampionRecord[];
   augments: AugmentRecord[];
   championRecommendations: Record<string, { augmentId: string; rank: number }[]>;
+  championBuilds: Record<string, ChampionBuildSummaryRecord>;
 };
 
 const augmentById = Object.fromEntries(
@@ -57,6 +87,16 @@ function matchesAugment(augment: AugmentRecord, query: string) {
   return [augment.name, augment.id].join(" ").toLowerCase().includes(normalized);
 }
 
+function formatPercent(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "暂无";
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatCount(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "暂无";
+  return Math.round(value).toLocaleString("zh-CN");
+}
+
 export default function App() {
   const [championQuery, setChampionQuery] = useState("");
   const [augmentQuery, setAugmentQuery] = useState("");
@@ -69,6 +109,7 @@ export default function App() {
 
   const championRecommendations =
     data.championRecommendations[selectedChampionId] ?? [];
+  const championBuild = data.championBuilds[selectedChampionId];
 
   const recommendedAugments = championRecommendations
     .map((recommendation) => ({
@@ -181,6 +222,8 @@ export default function App() {
               </div>
             </div>
           ) : null}
+
+          <BuildPanel build={championBuild} />
 
           <div className="section-title">
             <Star size={18} aria-hidden="true" />
@@ -305,5 +348,85 @@ function AugmentCard({
       {augment.tier ? <span className="tier-pill">T{augment.tier}</span> : null}
       {badge ? <span className="rank-badge">{badge}</span> : null}
     </button>
+  );
+}
+
+function BuildPanel({ build }: { build?: ChampionBuildSummaryRecord }) {
+  const primaryBuild = build?.builds[0];
+  const primaryCore = primaryBuild?.coreItems[0];
+
+  return (
+    <section className="build-panel" aria-label="推荐出装">
+      <div className="section-title">
+        <ShoppingBag size={18} aria-hidden="true" />
+        <h3>推荐出装</h3>
+      </div>
+
+      {primaryBuild && primaryCore ? (
+        <>
+          <div className="build-meta">
+            <div className="tag-row">
+              {primaryBuild.tags.map((tag) => (
+                <span key={tag}>{tag}</span>
+              ))}
+            </div>
+            <span>版本 {build?.latestPatch || primaryBuild.patch}</span>
+          </div>
+
+          <div className="core-build">
+            <div>
+              <p className="build-label">核心三件套</p>
+              <ItemRow items={primaryCore.items} />
+            </div>
+            <div className="build-stats">
+              <span>胜率 {formatPercent(primaryCore.winRate)}</span>
+              <span>选取 {formatPercent(primaryCore.pickRate)}</span>
+              <span>样本 {formatCount(primaryCore.games)}</span>
+            </div>
+          </div>
+
+          {primaryBuild.coreItems.length > 1 ? (
+            <div className="alt-builds">
+              {primaryBuild.coreItems.slice(1).map((coreItem, index) => (
+                <div className="alt-build" key={`${coreItem.items.map((item) => item.id).join("-")}-${index}`}>
+                  <span>#{index + 2}</span>
+                  <ItemRow items={coreItem.items} compact />
+                  <span>{formatPercent(coreItem.winRate)}</span>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <BuildItemGroup title="出门装" items={primaryBuild.startingItems} />
+          <BuildItemGroup title="情境装备" items={primaryBuild.situationalItems} />
+        </>
+      ) : (
+        <div className="build-empty">暂无出装数据</div>
+      )}
+    </section>
+  );
+}
+
+function BuildItemGroup({ title, items }: { title: string; items: ItemRecord[] }) {
+  if (!items.length) return null;
+
+  return (
+    <div className="build-group">
+      <p className="build-label">{title}</p>
+      <ItemRow items={items} compact />
+    </div>
+  );
+}
+
+function ItemRow({ items, compact = false }: { items: ItemRecord[]; compact?: boolean }) {
+  return (
+    <div className={compact ? "item-row compact" : "item-row"}>
+      {items.map((item, index) => (
+        <span className="item-chip" key={`${item.id}-${index}`} title={item.name}>
+          <img src={item.iconUrl} alt={item.name} />
+          <span>{item.name}</span>
+        </span>
+      ))}
+    </div>
   );
 }

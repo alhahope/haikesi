@@ -32,10 +32,13 @@ const rarityMap = {
 async function main() {
   const versions = await responseJson(DDRAGON_VERSION_URL);
   const ddragonVersion = versions[0];
-  const [championJson, aramHomeHtml, aramAugmentsHtml, cdragonAugments] =
+  const [championJson, itemJson, aramHomeHtml, aramAugmentsHtml, cdragonAugments] =
     await Promise.all([
       responseJson(
         `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/data/zh_CN/champion.json`
+      ),
+      responseJson(
+        `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/data/zh_CN/item.json`
       ),
       responseText(ARAMGG_HOME_URL),
       responseText(ARAMGG_AUGMENTS_URL),
@@ -43,9 +46,11 @@ async function main() {
     ]);
 
   const champions = normalizeChampions(championJson, ddragonVersion);
+  const itemLookup = normalizeItems(itemJson, ddragonVersion);
   const championRecommendations = extractChampionRecommendations(aramHomeHtml);
   const tierByAugmentId = extractGlobalTiers(aramAugmentsHtml);
   const fitChampionIdsByAugmentId = extractFitChampionIds(aramAugmentsHtml);
+  const championBuilds = await fetchChampionBuilds(champions, itemLookup);
   const recAugmentIds = new Set(
     Object.values(championRecommendations)
       .flat()
@@ -76,6 +81,8 @@ async function main() {
       champions: "Riot Data Dragon",
       recommendations: ARAMGG_HOME_URL,
       augmentTiers: ARAMGG_AUGMENTS_URL,
+      itemBuilds: `${ARAMGG_HOME_URL}/champion-stats/{championId}`,
+      itemDefinitions: "Riot Data Dragon item.json",
       augmentDefinitions: "CommunityDragon cherry-augments.json"
     }
   };
@@ -84,7 +91,8 @@ async function main() {
     meta,
     champions,
     augments,
-    championRecommendations
+    championRecommendations,
+    championBuilds
   };
 
   await mkdir(new URL("../src/data/generated/", import.meta.url), { recursive: true });
@@ -101,6 +109,7 @@ async function main() {
         augments: augments.length,
         recommendationChampions: Object.keys(championRecommendations).length,
         recommendations: recommendationCount,
+        itemBuildChampions: Object.keys(championBuilds).length,
         globalTieredAugments: Object.keys(tierByAugmentId).length,
         fitMappedAugments: Object.keys(fitChampionIdsByAugmentId).length,
         output: OUT_FILE.pathname
@@ -123,6 +132,120 @@ function normalizeChampions(championJson, ddragonVersion) {
       iconUrl: `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/champion/${champion.image.full}`
     }))
     .sort((left, right) => Number(left.id) - Number(right.id));
+}
+
+function normalizeItems(itemJson, ddragonVersion) {
+  const byId = {};
+  const byName = new Map();
+
+  for (const [id, item] of Object.entries(itemJson.data)) {
+    if (!item.name) continue;
+    const record = {
+      id: String(id),
+      name: item.name,
+      iconUrl: `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/item/${item.image?.full ?? `${id}.png`}`
+    };
+    byId[record.id] = record;
+    if (!byName.has(record.name)) {
+      byName.set(record.name, record);
+    }
+  }
+
+  return { byId, byName, ddragonVersion };
+}
+
+async function fetchChampionBuilds(champions, itemLookup) {
+  const entries = [];
+  const queue = [...champions];
+  const workerCount = 8;
+
+  async function worker() {
+    while (queue.length > 0) {
+      const champion = queue.shift();
+      if (!champion) continue;
+      try {
+        const html = await responseText(`${ARAMGG_HOME_URL}/champion-stats/${champion.id}`);
+        const summary = extractChampionBuildSummary(html);
+        const normalized = normalizeChampionBuildSummary(summary, itemLookup);
+        if (normalized?.builds.length) {
+          entries.push([champion.id, normalized]);
+        }
+      } catch (error) {
+        console.warn(`Skipping item build for champion ${champion.id}: ${error.message}`);
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return Object.fromEntries(entries.sort(([left], [right]) => Number(left) - Number(right)));
+}
+
+function extractChampionBuildSummary(html) {
+  const key = '\\"championBuildSummary\\":';
+  const keyIndex = html.indexOf(key);
+  if (keyIndex < 0) return undefined;
+  const valueStart = keyIndex + key.length;
+  if (html.slice(valueStart, valueStart + 4) === "null") return undefined;
+  const objectStart = html.indexOf("{", valueStart);
+  if (objectStart < 0) return undefined;
+  return parseEscapedJsonObjectAt(html, objectStart);
+}
+
+function normalizeChampionBuildSummary(summary, itemLookup) {
+  if (!summary?.builds?.length) return undefined;
+
+  const builds = summary.builds
+    .slice(0, 3)
+    .map((build) => ({
+      patch: String(build.patch ?? summary.latestPatch ?? ""),
+      tags: (build.tags ?? []).slice(0, 4).map(String),
+      games: Number(build.games ?? 0),
+      winRate: Number(build.winRate ?? 0),
+      pickRate: Number(build.pickRate ?? 0),
+      coreItems: (build.coreItems ?? [])
+        .slice(0, 3)
+        .map((coreItem) => ({
+          items: normalizeItemSequence(coreItem.itemIds, coreItem.itemNames, itemLookup),
+          games: Number(coreItem.games ?? 0),
+          winRate: Number(coreItem.winRate ?? 0),
+          pickRate: Number(coreItem.pickRate ?? 0)
+        }))
+        .filter((coreItem) => coreItem.items.length > 0),
+      startingItems: normalizeItemSequence([], build.startingItems ?? [], itemLookup).slice(0, 6),
+      situationalItems: normalizeItemSequence([], build.situationalItems ?? [], itemLookup).slice(0, 8)
+    }))
+    .filter((build) => build.coreItems.length > 0);
+
+  return {
+    latestPatch: String(summary.latestPatch ?? builds[0]?.patch ?? ""),
+    builds
+  };
+}
+
+function normalizeItemSequence(itemIds = [], itemNames = [], itemLookup) {
+  const length = Math.max(itemIds.length, itemNames.length);
+  return Array.from({ length }, (_, index) =>
+    normalizeItemReference(itemIds[index], itemNames[index], itemLookup)
+  ).filter((item) => item.name);
+}
+
+function normalizeItemReference(itemId, itemName, itemLookup) {
+  const id = itemId === undefined || itemId === null ? "" : String(itemId);
+  const name = itemName === undefined || itemName === null ? "" : String(itemName);
+  const byId = id ? itemLookup.byId[id] : undefined;
+  const byName = name ? itemLookup.byName.get(name) : undefined;
+  const resolvedId = byId?.id ?? byName?.id ?? id;
+
+  return {
+    id: resolvedId || name,
+    name: byId?.name ?? byName?.name ?? name ?? (resolvedId ? `装备 ${resolvedId}` : ""),
+    iconUrl:
+      byId?.iconUrl ??
+      byName?.iconUrl ??
+      (resolvedId
+        ? `https://ddragon.leagueoflegends.com/cdn/${itemLookup.ddragonVersion}/img/item/${resolvedId}.png`
+        : "")
+  };
 }
 
 function extractChampionRecommendations(html) {

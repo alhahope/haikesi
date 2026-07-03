@@ -195,7 +195,8 @@ h1 {
 .selected-champion img,
 .augment-card img,
 .candidate-slot img,
-.rank-card img {
+.rank-card img,
+.item-chip img {
   display: block;
   object-fit: cover;
   border-radius: 8px;
@@ -241,6 +242,136 @@ h1 {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
+}
+
+.build-panel {
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.build-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.build-meta .tag-row {
+  margin-top: 0;
+}
+
+.core-build {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(100, 214, 197, 0.3);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(100, 214, 197, 0.07);
+}
+
+.build-label {
+  margin-bottom: 7px;
+  color: #e7dcc7;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.item-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.item-row.compact {
+  gap: 6px;
+}
+
+.item-chip {
+  display: inline-grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  align-items: center;
+  gap: 7px;
+  max-width: 165px;
+  border: 1px solid rgba(169, 178, 186, 0.22);
+  border-radius: 8px;
+  padding: 5px 7px 5px 5px;
+  color: #f3eadb;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.item-row.compact .item-chip {
+  grid-template-columns: 26px minmax(0, 1fr);
+  max-width: 145px;
+  padding: 4px 6px 4px 4px;
+}
+
+.item-chip img {
+  width: 32px;
+  height: 32px;
+}
+
+.item-row.compact .item-chip img {
+  width: 26px;
+  height: 26px;
+}
+
+.item-chip span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.build-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.build-stats span,
+.alt-build > span:first-child,
+.alt-build > span:last-child {
+  border: 1px solid rgba(169, 178, 186, 0.18);
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: rgba(7, 10, 14, 0.32);
+  white-space: nowrap;
+}
+
+.alt-builds {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.alt-build {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.build-group {
+  margin-top: 12px;
+}
+
+.build-empty {
+  display: grid;
+  min-height: 72px;
+  place-items: center;
+  border: 1px dashed rgba(169, 178, 186, 0.22);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .augment-list,
