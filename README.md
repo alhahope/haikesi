@@ -4,7 +4,7 @@
 
 ## 一键本地运行
 ```bash
-cd /Users/guokai/Documents/Codex/2026-06-16/new-chat/work/hextech-aram-recommender
+cd /path/to/hextech-aram-recommender
 npm ci
 npm run dev -- --host 0.0.0.0
 ```
@@ -25,7 +25,7 @@ npm run build
 
 ## 手工上传步骤
 ```bash
-cd /Users/guokai/Documents/Codex/2026-06-16/new-chat/work/hextech-aram-recommender
+cd /path/to/hextech-aram-recommender
 
 git init
 
@@ -43,4 +43,3 @@ git push -u origin main
 ## 已包含的部署文件
 - `.github/workflows/github-pages.yml`
 - `vite.config.ts`（支持 `VITE_BASE_PATH`）
-
