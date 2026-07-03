@@ -43,6 +43,8 @@ interface ChampionBuildVariant {
 
 interface ChampionBuildSummaryRecord {
   latestPatch: string;
+  source?: string;
+  sourceUrl?: string;
   builds: ChampionBuildVariant[];
 }
 
@@ -323,7 +325,8 @@ export default function App() {
       <footer className="source-line">
         <span>{data.meta.aramggSnapshot}</span>
         <span>英雄：Data Dragon {data.meta.ddragonVersion}</span>
-        <span>推荐与层级：aramgg / CommunityDragon</span>
+        <span>海克斯：aramgg / CommunityDragon</span>
+        <span>出装：OP.GG ARAM: Mayhem</span>
       </footer>
     </main>
   );
@@ -370,7 +373,9 @@ function BuildPanel({ build }: { build?: ChampionBuildSummaryRecord }) {
                 <span key={tag}>{tag}</span>
               ))}
             </div>
-            <span>版本 {build?.latestPatch || primaryBuild.patch}</span>
+            <span>
+              {build?.source ?? "推荐出装"} · 版本 {build?.latestPatch || primaryBuild.patch}
+            </span>
           </div>
 
           <div className="core-build">
@@ -379,9 +384,12 @@ function BuildPanel({ build }: { build?: ChampionBuildSummaryRecord }) {
               <ItemRow items={primaryCore.items} />
             </div>
             <div className="build-stats">
-              <span>胜率 {formatPercent(primaryCore.winRate)}</span>
-              <span>选取 {formatPercent(primaryCore.pickRate)}</span>
-              <span>样本 {formatCount(primaryCore.games)}</span>
+              {primaryCore.winRate > 0 ? <span>胜率 {formatPercent(primaryCore.winRate)}</span> : null}
+              {primaryCore.pickRate > 0 ? <span>选取 {formatPercent(primaryCore.pickRate)}</span> : null}
+              {primaryCore.games > 0 ? <span>样本 {formatCount(primaryCore.games)}</span> : null}
+              {primaryCore.winRate <= 0 && primaryCore.pickRate <= 0 && primaryCore.games <= 0 ? (
+                <span>按 {build?.source ?? "数据源"} 推荐顺序展示</span>
+              ) : null}
             </div>
           </div>
 
@@ -391,14 +399,14 @@ function BuildPanel({ build }: { build?: ChampionBuildSummaryRecord }) {
                 <div className="alt-build" key={`${coreItem.items.map((item) => item.id).join("-")}-${index}`}>
                   <span>#{index + 2}</span>
                   <ItemRow items={coreItem.items} compact />
-                  <span>{formatPercent(coreItem.winRate)}</span>
+                  <span>{coreItem.winRate > 0 ? formatPercent(coreItem.winRate) : "备选"}</span>
                 </div>
               ))}
             </div>
           ) : null}
 
           <BuildItemGroup title="出门装" items={primaryBuild.startingItems} />
-          <BuildItemGroup title="情境装备" items={primaryBuild.situationalItems} />
+          <BuildItemGroup title="鞋子推荐" items={primaryBuild.situationalItems} />
         </>
       ) : (
         <div className="build-empty">暂无出装数据</div>

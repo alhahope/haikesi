@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 const DDRAGON_VERSION_URL = "https://ddragon.leagueoflegends.com/api/versions.json";
 const ARAMGG_HOME_URL = "https://aramgg.com/zh-CN";
 const ARAMGG_AUGMENTS_URL = "https://aramgg.com/zh-CN/augments";
+const OPGG_ARAM_MAYHEM_URL = "https://op.gg/zh-cn/lol/modes/aram-mayhem";
 const CDRAGON_AUGMENTS_URL =
   "https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/zh_cn/v1/cherry-augments.json";
 const CDRAGON_ASSET_BASE =
@@ -32,7 +33,14 @@ const rarityMap = {
 async function main() {
   const versions = await responseJson(DDRAGON_VERSION_URL);
   const ddragonVersion = versions[0];
-  const [championJson, itemJson, aramHomeHtml, aramAugmentsHtml, cdragonAugments] =
+  const [
+    championJson,
+    itemJson,
+    aramHomeHtml,
+    aramAugmentsHtml,
+    opggAramMayhemHtml,
+    cdragonAugments
+  ] =
     await Promise.all([
       responseJson(
         `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/data/zh_CN/champion.json`
@@ -42,6 +50,7 @@ async function main() {
       ),
       responseText(ARAMGG_HOME_URL),
       responseText(ARAMGG_AUGMENTS_URL),
+      responseText(OPGG_ARAM_MAYHEM_URL),
       responseJson(CDRAGON_AUGMENTS_URL)
     ]);
 
@@ -50,7 +59,11 @@ async function main() {
   const championRecommendations = extractChampionRecommendations(aramHomeHtml);
   const tierByAugmentId = extractGlobalTiers(aramAugmentsHtml);
   const fitChampionIdsByAugmentId = extractFitChampionIds(aramAugmentsHtml);
-  const championBuilds = await fetchChampionBuilds(champions, itemLookup);
+  const championBuilds = await fetchChampionBuilds(
+    champions,
+    itemLookup,
+    opggAramMayhemHtml
+  );
   const recAugmentIds = new Set(
     Object.values(championRecommendations)
       .flat()
@@ -81,7 +94,7 @@ async function main() {
       champions: "Riot Data Dragon",
       recommendations: ARAMGG_HOME_URL,
       augmentTiers: ARAMGG_AUGMENTS_URL,
-      itemBuilds: `${ARAMGG_HOME_URL}/champion-stats/{championId}`,
+      itemBuilds: `${OPGG_ARAM_MAYHEM_URL}/{championSlug}/build`,
       itemDefinitions: "Riot Data Dragon item.json",
       augmentDefinitions: "CommunityDragon cherry-augments.json"
     }
@@ -154,7 +167,8 @@ function normalizeItems(itemJson, ddragonVersion) {
   return { byId, byName, ddragonVersion };
 }
 
-async function fetchChampionBuilds(champions, itemLookup) {
+async function fetchChampionBuilds(champions, itemLookup, opggAramMayhemHtml) {
+  const slugByChampionId = extractOpggChampionSlugs(opggAramMayhemHtml);
   const entries = [];
   const queue = [...champions];
   const workerCount = 8;
@@ -163,10 +177,11 @@ async function fetchChampionBuilds(champions, itemLookup) {
     while (queue.length > 0) {
       const champion = queue.shift();
       if (!champion) continue;
+      const slug = slugByChampionId[champion.id] ?? champion.key.toLowerCase();
       try {
-        const html = await responseText(`${ARAMGG_HOME_URL}/champion-stats/${champion.id}`);
-        const summary = extractChampionBuildSummary(html);
-        const normalized = normalizeChampionBuildSummary(summary, itemLookup);
+        const sourceUrl = `${OPGG_ARAM_MAYHEM_URL}/${slug}/build`;
+        const html = await responseText(sourceUrl);
+        const normalized = extractOpggBuildSummary(html, sourceUrl, itemLookup);
         if (normalized?.builds.length) {
           entries.push([champion.id, normalized]);
         }
@@ -180,46 +195,85 @@ async function fetchChampionBuilds(champions, itemLookup) {
   return Object.fromEntries(entries.sort(([left], [right]) => Number(left) - Number(right)));
 }
 
-function extractChampionBuildSummary(html) {
-  const key = '\\"championBuildSummary\\":';
-  const keyIndex = html.indexOf(key);
-  if (keyIndex < 0) return undefined;
-  const valueStart = keyIndex + key.length;
-  if (html.slice(valueStart, valueStart + 4) === "null") return undefined;
-  const objectStart = html.indexOf("{", valueStart);
-  if (objectStart < 0) return undefined;
-  return parseEscapedJsonObjectAt(html, objectStart);
+function extractOpggChampionSlugs(html) {
+  const slugByChampionId = {};
+  const regex = /\\"key\\":\\"([^\\]+)\\".*?\\"champion_id\\":(\d+)/g;
+  let match;
+  while ((match = regex.exec(html))) {
+    slugByChampionId[String(match[2])] = match[1];
+  }
+  return slugByChampionId;
 }
 
-function normalizeChampionBuildSummary(summary, itemLookup) {
-  if (!summary?.builds?.length) return undefined;
+function extractOpggBuildSummary(html, sourceUrl, itemLookup) {
+  const coreRows = extractOpggItemRows(extractTableByCaption(html, "Builds Table"));
+  if (coreRows.length === 0) return undefined;
 
-  const builds = summary.builds
-    .slice(0, 3)
-    .map((build) => ({
-      patch: String(build.patch ?? summary.latestPatch ?? ""),
-      tags: (build.tags ?? []).slice(0, 4).map(String),
-      games: Number(build.games ?? 0),
-      winRate: Number(build.winRate ?? 0),
-      pickRate: Number(build.pickRate ?? 0),
-      coreItems: (build.coreItems ?? [])
-        .slice(0, 3)
-        .map((coreItem) => ({
-          items: normalizeItemSequence(coreItem.itemIds, coreItem.itemNames, itemLookup),
-          games: Number(coreItem.games ?? 0),
-          winRate: Number(coreItem.winRate ?? 0),
-          pickRate: Number(coreItem.pickRate ?? 0)
-        }))
-        .filter((coreItem) => coreItem.items.length > 0),
-      startingItems: normalizeItemSequence([], build.startingItems ?? [], itemLookup).slice(0, 6),
-      situationalItems: normalizeItemSequence([], build.situationalItems ?? [], itemLookup).slice(0, 8)
-    }))
-    .filter((build) => build.coreItems.length > 0);
+  const patch =
+    extractFirstMatch(html, /meta\/images\/lol\/([0-9.]+)\/item\//) ??
+    extractFirstMatch(html, /通过([0-9.]+)版本最佳/) ??
+    "";
+  const startingRows = extractOpggItemRows(extractTableByCaption(html, "Items Table"));
+  const bootRows = extractOpggItemRows(extractTableByCaption(html, "Boots Table"));
 
   return {
-    latestPatch: String(summary.latestPatch ?? builds[0]?.patch ?? ""),
-    builds
+    latestPatch: patch,
+    source: "OP.GG ARAM: Mayhem",
+    sourceUrl,
+    builds: [
+      {
+        patch,
+        tags: ["ARAM: Mayhem"],
+        games: 0,
+        winRate: 0,
+        pickRate: 0,
+        coreItems: coreRows.slice(0, 6).map((items) => ({
+          items: items.map((item) => normalizeItemReference(item.id, item.name, itemLookup, item.iconUrl)),
+          games: 0,
+          winRate: 0,
+          pickRate: 0
+        })),
+        startingItems: (startingRows[0] ?? [])
+          .map((item) => normalizeItemReference(item.id, item.name, itemLookup, item.iconUrl))
+          .slice(0, 6),
+        situationalItems: bootRows
+          .flat()
+          .map((item) => normalizeItemReference(item.id, item.name, itemLookup, item.iconUrl))
+          .slice(0, 8)
+      }
+    ]
   };
+}
+
+function extractTableByCaption(html, caption) {
+  const captionIndex = html.indexOf(`<caption>${caption}</caption>`);
+  if (captionIndex < 0) return "";
+  const tableStart = html.lastIndexOf("<table", captionIndex);
+  const tableEnd = html.indexOf("</table>", captionIndex);
+  if (tableStart < 0 || tableEnd < 0) return "";
+  return html.slice(tableStart, tableEnd + "</table>".length);
+}
+
+function extractOpggItemRows(tableHtml) {
+  if (!tableHtml) return [];
+  const rows = [];
+  const rowRegex = /<tr\b[^>]*>([\s\S]*?)<\/tr>/g;
+  let rowMatch;
+  while ((rowMatch = rowRegex.exec(tableHtml))) {
+    const items = [];
+    const imageRegex =
+      /<img\s+alt="([^"]+)"[^>]+src="([^"]*\/item\/(\d+)\.png[^"]*)"/g;
+    let imageMatch;
+    while ((imageMatch = imageRegex.exec(rowMatch[1]))) {
+      items.push({
+        id: imageMatch[3],
+        name: decodeHtml(imageMatch[1]),
+        iconUrl: decodeHtml(imageMatch[2])
+      });
+    }
+    if (items.length > 0) rows.push(items);
+  }
+  return rows;
 }
 
 function normalizeItemSequence(itemIds = [], itemNames = [], itemLookup) {
@@ -229,7 +283,7 @@ function normalizeItemSequence(itemIds = [], itemNames = [], itemLookup) {
   ).filter((item) => item.name);
 }
 
-function normalizeItemReference(itemId, itemName, itemLookup) {
+function normalizeItemReference(itemId, itemName, itemLookup, sourceIconUrl = "") {
   const id = itemId === undefined || itemId === null ? "" : String(itemId);
   const name = itemName === undefined || itemName === null ? "" : String(itemName);
   const byId = id ? itemLookup.byId[id] : undefined;
@@ -242,9 +296,10 @@ function normalizeItemReference(itemId, itemName, itemLookup) {
     iconUrl:
       byId?.iconUrl ??
       byName?.iconUrl ??
+      (sourceIconUrl ||
       (resolvedId
         ? `https://ddragon.leagueoflegends.com/cdn/${itemLookup.ddragonVersion}/img/item/${resolvedId}.png`
-        : "")
+        : ""))
   };
 }
 
@@ -422,6 +477,15 @@ function findBalancedEnd(text, start) {
 function extractFirstMatch(text, regex) {
   const match = text.match(regex);
   return match?.[1];
+}
+
+function decodeHtml(value) {
+  return value
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
 }
 
 main().catch((error) => {
