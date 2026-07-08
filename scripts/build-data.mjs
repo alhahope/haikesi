@@ -54,7 +54,8 @@ async function main() {
       responseJson(CDRAGON_AUGMENTS_URL)
     ]);
 
-  const champions = normalizeChampions(championJson, ddragonVersion);
+  const championRankings = extractOpggChampionRankings(opggAramMayhemHtml);
+  const champions = normalizeChampions(championJson, ddragonVersion, championRankings);
   const itemLookup = normalizeItems(itemJson, ddragonVersion);
   const championRecommendations = extractChampionRecommendations(aramHomeHtml);
   const tierByAugmentId = extractGlobalTiers(aramAugmentsHtml);
@@ -94,6 +95,7 @@ async function main() {
       champions: "Riot Data Dragon",
       recommendations: ARAMGG_HOME_URL,
       augmentTiers: ARAMGG_AUGMENTS_URL,
+      championRankings: OPGG_ARAM_MAYHEM_URL,
       itemBuilds: `${OPGG_ARAM_MAYHEM_URL}/{championSlug}/build`,
       itemDefinitions: "Riot Data Dragon item.json",
       augmentDefinitions: "CommunityDragon cherry-augments.json"
@@ -119,6 +121,7 @@ async function main() {
     JSON.stringify(
       {
         champions: champions.length,
+        rankedChampions: Object.keys(championRankings).length,
         augments: augments.length,
         recommendationChampions: Object.keys(championRecommendations).length,
         recommendations: recommendationCount,
@@ -133,18 +136,28 @@ async function main() {
   );
 }
 
-function normalizeChampions(championJson, ddragonVersion) {
+function normalizeChampions(championJson, ddragonVersion, championRankings) {
   return Object.values(championJson.data)
-    .map((champion) => ({
-      id: String(champion.key),
-      key: champion.id,
-      name: `${champion.name} ${champion.title}`,
-      shortName: champion.title,
-      alias: champion.name,
-      tags: champion.tags ?? [],
-      iconUrl: `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/champion/${champion.image.full}`
-    }))
-    .sort((left, right) => Number(left.id) - Number(right.id));
+    .map((champion) => {
+      const ranking = championRankings[String(champion.key)];
+      return {
+        id: String(champion.key),
+        key: champion.id,
+        name: `${champion.name} ${champion.title}`,
+        shortName: champion.title,
+        alias: champion.name,
+        tags: champion.tags ?? [],
+        rank: ranking?.rank,
+        tier: ranking?.tier,
+        iconUrl: `https://ddragon.leagueoflegends.com/cdn/${ddragonVersion}/img/champion/${champion.image.full}`
+      };
+    })
+    .sort((left, right) => {
+      const leftRank = left.rank ?? 999;
+      const rightRank = right.rank ?? 999;
+      if (leftRank !== rightRank) return leftRank - rightRank;
+      return Number(left.id) - Number(right.id);
+    });
 }
 
 function normalizeItems(itemJson, ddragonVersion) {
@@ -205,6 +218,21 @@ function extractOpggChampionSlugs(html) {
     slugByChampionId[String(match[2])] = match[1];
   }
   return slugByChampionId;
+}
+
+function extractOpggChampionRankings(html) {
+  const rankingByChampionId = {};
+  const regex =
+    /\\"key\\":\\"([^\\]+)\\".*?\\"champion_id\\":(\d+).*?\\"tier\\":(\d+),\\"rank\\":(\d+)/g;
+  let match;
+  while ((match = regex.exec(html))) {
+    rankingByChampionId[String(match[2])] = {
+      key: match[1],
+      tier: Number(match[3]),
+      rank: Number(match[4])
+    };
+  }
+  return rankingByChampionId;
 }
 
 function extractOpggBuildSummary(html, sourceUrl, itemLookup) {

@@ -14,6 +14,8 @@ interface ChampionRecord {
   shortName: string;
   alias: string;
   tags: string[];
+  rank?: number;
+  tier?: number;
   iconUrl: string;
 }
 
@@ -99,6 +101,13 @@ function formatPercent(value: number) {
 function formatCount(value: number) {
   if (!Number.isFinite(value) || value <= 0) return "暂无";
   return Math.round(value).toLocaleString("zh-CN");
+}
+
+function championRankText(champion: ChampionRecord) {
+  if (!champion.rank && !champion.tier) return "未排名";
+  if (!champion.rank) return `T${champion.tier}`;
+  if (!champion.tier) return `#${champion.rank}`;
+  return `#${champion.rank} · T${champion.tier}`;
 }
 
 export default function App() {
@@ -205,8 +214,10 @@ export default function App() {
                 onClick={() => selectChampion(champion.id)}
                 title={champion.name}
               >
+                {champion.rank ? <span className="champion-rank">#{champion.rank}</span> : null}
                 <img src={champion.iconUrl} alt={champion.name} />
-                <span>{champion.shortName}</span>
+                <span className="champion-name">{champion.shortName}</span>
+                <span className="champion-tier">{champion.tier ? `T${champion.tier}` : "未分层"}</span>
               </button>
             ))}
           </div>
@@ -219,6 +230,7 @@ export default function App() {
               <div>
                 <h2>{selectedChampion.name}</h2>
                 <div className="tag-row">
+                  <span>{championRankText(selectedChampion)}</span>
                   {selectedChampion.tags.map((tag) => (
                     <span key={tag}>{tag}</span>
                   ))}
